@@ -25,25 +25,28 @@ class Okkama
   end
 
   def build
-    found = []
-    transactions.each do |t|
-      if t.in?(report_items)
-        t.match_type = found.any? { |tr| t.match?(tr) } ? "repeated" : "matched"
-        found << t
+    result = []
+    report_items.each do |item|
+      found = item.in(transactions)
+      if found.any?
+        found.first.match_type = "matched"
+        found[1..-1].each {|c| c.match_type = "repeated" }
+        result.concat(found)
       else
-        t.match_type = "not matched"
+        item.match_type = "not matched"
+        result << item
       end
     end
 
-    write_file
+    write_file(result)
   end
 
   # private
 
-  def write_file
-    CSV.open(namespace, "w") do |csv|
+  def write_file(result)
+    CSV.open(namespace, "w", encoding: "windows-1251:utf-8", col_sep: ";") do |csv|
       csv << HEADERS
-      transactions.each do |transaction|
+      result.each do |transaction|
         csv << transaction.to_a
       end
     end
@@ -56,16 +59,33 @@ class Okkama
       row[h.name].to_s,
       row[h.amount],
       row[h.currency],
-      DateTime.parse(row[h.donated_at]).strftime("%F"),
+      DateTime.parse(row[h.donated_at]).strftime("%F %H:%M"),
       row[h.target],
       row[h.type].to_s
     ]
   end
 
-  Source = Struct.new(:email, :name, :status) do
+  Source = Struct.new(:email, :name, :status, :match_type) do
 
     def email_prefix
       email.to_s.split("@").first.to_s
+    end
+
+    def in(transactions)
+      transactions.select { |transaction| transaction.valid? && match?(transaction) }
+    end
+
+    def match?(transaction)
+      return true if !email_prefix.empty? && transaction.email_prefix == email_prefix
+      return true if !name.empty? && transaction.name == name
+
+      return false
+    end
+
+    def to_a
+      HEADERS.map do |d|
+        self.respond_to?(d) ? self.send(d) : ""
+      end
     end
   end
 
@@ -76,17 +96,6 @@ class Okkama
 
     def valid?
       ["Оплата", "Оплата с созданием подписки"].include?(type) && !name.include?("MOMENTUM")
-    end
-
-    def in?(items)
-      items.any? { |item| valid? && match?(item) }
-    end
-
-    def match?(item)
-      return true if !email_prefix.empty? && item.email_prefix == email_prefix
-      return true if !name.empty? && item.name == name
-
-      return false
     end
 
     def to_a
