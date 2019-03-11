@@ -1,44 +1,37 @@
-require 'rubyXL'
+require 'csv'
 
 class Okkama
-  HEADERS = ["email", "name", "sum", "donated_at", "target", "type", "match_type"]
+  HEADERS = ["email", "name", "amount", "currency", "donated_at", "target", "type", "match_type"]
 
-  attr_reader :source, :report, :found, :not_found, :track
+  attr_reader :source, :report, :namespace
 
   def initialize(*args)
-    @source = read_file(args[0])
-    @report = read_file(args[1])
+    @source = CSV.read(args[0], col_sep: ";")
+    @report = CSV.read(args[1], col_sep: ";")
+    @namespace = "build/#{Date.today}/#{args[1].split('/').last}"
   end
 
   def transactions
-    @transactions ||= rows(source).map do |t|
+    @transactions ||= source[1..-1].map do |t|
       Transaction.new(*cleared(t))
     end.sort_by(&:donated_at)
   end
 
   def report_items
-    @report_items ||= rows(report).map do |t|
-      next if t[-1].value != "Был переход по ссылке"
-
-      Source.new(t[0]&.value.to_s, t[5]&.value.to_s)
+    h = Header.new(report.first)
+    @report_items ||= report[1..-1].map do |t|
+      Source.new(t[h.email].to_s, t[h.name].to_s)
     end.compact
   end
 
   def build
-    @found = []
-    @not_found = []
-    @track = []
-
+    found = []
     transactions.each do |t|
       if t.in?(report_items)
-        if found.any? { |tr| t.match?(tr) }
-          t.match_type = "repeated"
-        else
-          t.match_type = "matched"
-        end
+        t.match_type = found.any? { |tr| t.match?(tr) } ? "repeated" : "matched"
         found << t
       else
-        not_found << t
+        t.match_type = "not matched"
       end
     end
 
@@ -47,45 +40,26 @@ class Okkama
 
   # private
 
-  def header(collection)
-    collection.sheet_data[0].map(&:value)
-  end
-
-  def rows(collection)
-    collection.sheet_data[1..-1]
-  end
-
-  def read_file(path)
-    RubyXL::Parser.parse(path).worksheets[0]
-  end
-
   def write_file
-    workbook = RubyXL::Workbook.new
-    matched_sheet = workbook.worksheets[0]
-    matched_sheet.sheet_name = "Matched users"
-    not_matched_sheet = workbook.add_worksheet("Not matched users")
-
-    write_sheet(matched_sheet, found)
-    write_sheet(not_matched_sheet, not_found)
-
-    workbook.write("/Users/jorik/report-#{Date.today.to_s}.xlsx")
-  end
-
-  def write_sheet(worksheet, rows)
-
-    HEADERS.each_with_index do |name, index|
-      worksheet.add_cell(0, index, name)
-      worksheet.change_column_width(index, 22)
-    end
-    rows.each_with_index do |row, index|
-      HEADERS.each_with_index do |value, cell_idx|
-        worksheet.add_cell(index + 1, cell_idx, row.send(value))
+    CSV.open(namespace, "w") do |csv|
+      csv << HEADERS
+      transactions.each do |transaction|
+        csv << transaction.to_a
       end
     end
   end
 
   def cleared(row)
-    [row[14]&.value.to_s, row[15]&.value.to_s, row[8].value, row[1].value.strftime("%F"), row[19].value, row[10]&.value.to_s]
+    h = Header.new(source.first)
+    [
+      row[h.email].to_s,
+      row[h.name].to_s,
+      row[h.amount],
+      row[h.currency],
+      DateTime.parse(row[h.donated_at]).strftime("%F"),
+      row[h.target],
+      row[h.type].to_s
+    ]
   end
 
   Source = Struct.new(:email, :name, :status) do
@@ -95,7 +69,7 @@ class Okkama
     end
   end
 
-  Transaction = Struct.new(:email, :name, :sum, :donated_at, :target, :type, :match_type) do
+  Transaction = Struct.new(:email, :name, :amount, :currency, :donated_at, :target, :type, :match_type) do
     def email_prefix
       email.to_s.split("@").first.to_s
     end
@@ -114,17 +88,44 @@ class Okkama
 
       return false
     end
+
+    def to_a
+      HEADERS.map { |d| self.send(d) }
+    end
   end
 
-  #
-  # # todo: check percentage for name matching
-  # def string_difference_percent(a, b)
-  #   longer = [a.size, b.size].max
-  #   same = a.each_char.zip(b.each_char).select { |a, b| a == b }.size
-  #   (longer - same) / a.size.to_f
-  # end
-end
+  Header = Struct.new(:fields) do
 
-# r = ReportBuilder.new("/Users/jorik/projects/source-sheet.xlsx", "/Users/jorik/some.xlsx")
-r = Okkama.new("/Users/jorik/Downloads/Transactions\ \(1\)\ с08-19.xlsx", "/Users/jorik/report.xlsx")
-r.build
+    def name
+      fields.index { |str| str.match(/name|имя/i) }
+    end
+
+    def email
+      fields.index { |str| str.match(/mail/i) }
+    end
+
+    def amount
+      fields.index { |str| str.match(/сумма/i) }
+    end
+
+    def currency
+      fields.index { |str| str.match(/валюта/i) }
+    end
+
+    def donated_at
+      fields.index { |str| str.match(/дата/i) }
+    end
+
+    def target
+      fields.index { |str| str.match(/назначение/i) }
+    end
+
+    def type
+      fields.index { |str| str.match(/тип/i) }
+    end
+
+    def status
+      fields.index { |str| str.match(/status/i) }
+    end
+  end
+end
