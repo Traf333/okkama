@@ -3,12 +3,13 @@ require 'csv'
 class Okkama
   HEADERS = ["email", "name", "amount", "currency", "donated_at", "target", "type", "match_type"]
 
-  attr_reader :source, :report, :namespace
+  attr_reader :source, :reports
 
-  def initialize(*args)
-    @source = CSV.read(args[0], col_sep: ";")
-    @report = CSV.read(args[1], col_sep: ";")
-    @namespace = "build/#{Date.today}/#{args[1].split('/').last}"
+  def initialize(source, reports)
+    @source = CSV.read(source, col_sep: ";")
+    @reports = reports.map do |report|
+      { list: CSV.read(report, col_sep: ";"), namespace: report.split('/').last }
+    end
   end
 
   def transactions
@@ -17,34 +18,42 @@ class Okkama
     end.sort_by(&:donated_at)
   end
 
-  def report_items
+  def report_items(report)
     h = Header.new(report.first)
-    @report_items ||= report[1..-1].map do |t|
+    report[1..-1].map do |t|
       Source.new(t[h.email].to_s, t[h.name].to_s)
     end.compact
   end
 
   def build
-    result = []
-    report_items.each do |item|
-      found = item.in(transactions)
-      if found.any?
-        found.first.match_type = "matched"
-        found[1..-1].each {|c| c.match_type = "repeated" }
-        result.concat(found)
-      else
-        item.match_type = "not matched"
-        result << item
+    reports.each do |report|
+      result = []
+
+      report_items(report[:list]).each do |item|
+        found = item.in(transactions)
+        if found.any?
+          found.each_with_index do |tr, i|
+            tr.match_type = i == 0 ? "matched" : "repeated"
+            tr.email = item.email if tr.email.empty?
+            result << tr
+          end
+        else
+          item.match_type = "not matched"
+          result << item
+        end
       end
+      write_file(result, report[:namespace])
     end
 
-    write_file(result)
+
+    unmatched_transactions = transactions.select { |t| t.match_type.to_s.empty? }
+    write_file(unmatched_transactions, "unmatched.csv")
   end
 
   # private
 
-  def write_file(result)
-    CSV.open(namespace, "w", encoding: "windows-1251:utf-8", col_sep: ";") do |csv|
+  def write_file(result, pathname)
+    CSV.open("build/#{Date.today}/#{pathname}", "w", encoding: "windows-1251:utf-8", col_sep: ";") do |csv|
       csv << HEADERS
       result.each do |transaction|
         csv << transaction.to_a
