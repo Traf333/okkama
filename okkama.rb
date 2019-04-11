@@ -64,7 +64,7 @@ class Okkama
   def cleared(row)
     h = Header.new(source.first)
     [
-      row[h.email].to_s,
+      row[h.email].to_s.empty? ? row[h.payee] : row[h.email],
       row[h.name].to_s,
       row[h.amount],
       row[h.currency],
@@ -120,6 +120,10 @@ class Okkama
 
     def email
       fields.index { |str| str.match(/mail/i) }
+    end
+
+    def payee
+      fields.index { |str| str.match(/плательщик/i) }
     end
 
     def amount
