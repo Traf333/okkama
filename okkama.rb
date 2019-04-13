@@ -77,7 +77,7 @@ class Okkama
   Source = Struct.new(:email, :name, :status, :match_type) do
 
     def email_prefix
-      email.to_s.split("@").first.to_s
+      email.to_s.split("@").first.to_s.downcase
     end
 
     def in(transactions)
@@ -86,7 +86,7 @@ class Okkama
 
     def match?(transaction)
       return true if !email_prefix.empty? && transaction.email_prefix == email_prefix
-      return true if !name.empty? && transaction.name == name
+      return true if !name.empty? && !blacklist.match?(transaction.name) && transaction.name == name
 
       return false
     end
@@ -96,15 +96,21 @@ class Okkama
         self.respond_to?(d) ? self.send(d) : ""
       end
     end
+
+    private
+
+    def blacklist
+      /momentum/i
+    end
   end
 
   Transaction = Struct.new(:email, :name, :amount, :currency, :donated_at, :target, :type, :match_type) do
     def email_prefix
-      email.to_s.split("@").first.to_s
+      email.to_s.split("@").first.to_s.downcase
     end
 
     def valid?
-      ["Оплата", "Оплата с созданием подписки"].include?(type) && !name.include?("MOMENTUM")
+      ["Оплата", "Оплата с созданием подписки"].include?(type)
     end
 
     def to_a
