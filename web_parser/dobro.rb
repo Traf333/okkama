@@ -9,7 +9,7 @@ def adapter
     website_el = page.css(".p-fund-detail__info-row").find { |el| el.text.include? "Сайт" }
     {
       location: page.css(".breadcrumbs span.link__text").text,
-      name: page.css(".hdr__inner").text,
+      name: page.css(".hdr__inner")[0].text,
       phone: phone_el ? phone_el.text.gsub("Телефон", "") : "",
       website: website_el ? website_el.text.gsub("Сайт", "") : "",
       details: page.css(".cols__inner p").text.gsub("\r\n", " "),
