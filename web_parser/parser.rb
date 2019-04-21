@@ -3,13 +3,14 @@ require 'open-uri'
 require 'csv'
 
 class Parser
-  HEADER = %w[name location phone website email logo_src details]
+  HEADER = %w[name location phone website email logo_src details tags legal_form address]
 
-  attr_reader :website, :adapter
+  attr_reader :website, :adapter, :records
 
-  def initialize(website, adapter:)
+  def initialize(website, adapter:, records: [])
     @website = website
     @adapter = adapter
+    @records = records
   end
 
   def call(urls)
@@ -42,6 +43,6 @@ class Parser
   end
 
   def parse(page)
-    adapter.call(page)
+    adapter.call(page, records)
   end
 end

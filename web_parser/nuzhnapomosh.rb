@@ -4,7 +4,7 @@ require 'open-uri'
 require_relative './parser'
 
 def adapter
-  ->(page) do
+  ->(page, _) do
     {
       location: page.css(".b-one-fund__info-str__place").text,
       name: page.css(".b-one-fund__head").text,

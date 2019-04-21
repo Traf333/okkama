@@ -4,7 +4,7 @@ require 'open-uri'
 require_relative './parser'
 
 def adapter
-  ->(page) do
+  ->(page, _) do
     phone_el = page.css(".p-fund-detail__info-row").find { |el| el.text.include? "Телефон" }
     website_el = page.css(".p-fund-detail__info-row").find { |el| el.text.include? "Сайт" }
     {

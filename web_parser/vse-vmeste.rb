@@ -9,7 +9,7 @@ def parse_details(details, regex)
 end
 
 def adapter
-  ->(page) do
+  ->(page, _) do
     details = page.css(".single_news p").text
     {
       name: page.css("h2").text,
